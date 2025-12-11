@@ -26,7 +26,7 @@ export default function ProfilePage() {
         const data = await authApi.getUserProfile(userId);
         setProfile(data);
         // TODO: Fetch user's matches
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error('Error fetching profile:', error);
       } finally {
         setLoading(false);

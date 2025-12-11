@@ -131,5 +131,5 @@ export interface LoginResponse {
 
 export interface WebSocketMessage {
   type: 'match_state' | 'match_update' | 'frame_update' | 'event_created' | 'ping' | 'pong';
-  data?: any;
+  data?: unknown;
 }
