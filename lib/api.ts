@@ -3,7 +3,7 @@
 
 const isProduction = process.env.NODE_ENV === 'production';
 const API_BASE_URL = isProduction
-  ? 'https://biliardapi.szlg.info'
+  ? 'https://biliardapi.szlg.info/api'
   : 'http://localhost:8000/api';
 
 export const getApiUrl = (endpoint: string) => {
