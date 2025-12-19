@@ -11,10 +11,10 @@ import Image from 'next/image';
 export default function ProfilePage() {
   const params = useParams();
   const router = useRouter();
-  const { isAuthenticated, user: currentUser } = useAuth();
+  const { isAuthenticated } = useAuth();
   const userId = parseInt(params.id as string);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [matches, setMatches] = useState<Match[]>([]);
+  const [matches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

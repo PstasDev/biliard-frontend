@@ -49,6 +49,7 @@ export default function BiroMatchesPage() {
 
   useEffect(() => {
     filterMatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matches, searchQuery, statusFilter]);
 
   async function fetchData() {
@@ -77,7 +78,11 @@ export default function BiroMatchesPage() {
       filtered = filtered.filter((match) => {
         const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
         const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
-        const isFinished = player1Wins >= match.frames_to_win || player2Wins >= match.frames_to_win;
+        const totalFrames = match.frames_to_win;
+        const framesNeededToWin = Math.ceil(totalFrames / 2);
+        const isFinished = player1Wins >= framesNeededToWin || 
+                          player2Wins >= framesNeededToWin ||
+                          (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
         
         return statusFilter === 'finished' ? isFinished : !isFinished;
       });
@@ -309,7 +314,10 @@ export default function BiroMatchesPage() {
                 {matches.filter((m) => {
                   const p1Wins = m.match_frames?.filter(f => f.winner?.id === m.player1.id).length || 0;
                   const p2Wins = m.match_frames?.filter(f => f.winner?.id === m.player2.id).length || 0;
-                  return p1Wins < m.frames_to_win && p2Wins < m.frames_to_win;
+                  const totalFrames = m.frames_to_win;
+                  const framesNeededToWin = Math.ceil(totalFrames / 2);
+                  return p1Wins < framesNeededToWin && p2Wins < framesNeededToWin &&
+                         !(totalFrames % 2 === 0 && p1Wins + p2Wins >= totalFrames);
                 }).length}
               </p>
               <p className="text-sm text-muted-foreground">Folyamatban</p>
@@ -323,7 +331,10 @@ export default function BiroMatchesPage() {
                 {matches.filter((m) => {
                   const p1Wins = m.match_frames?.filter(f => f.winner?.id === m.player1.id).length || 0;
                   const p2Wins = m.match_frames?.filter(f => f.winner?.id === m.player2.id).length || 0;
-                  return p1Wins >= m.frames_to_win || p2Wins >= m.frames_to_win;
+                  const totalFrames = m.frames_to_win;
+                  const framesNeededToWin = Math.ceil(totalFrames / 2);
+                  return p1Wins >= framesNeededToWin || p2Wins >= framesNeededToWin ||
+                         (totalFrames % 2 === 0 && p1Wins + p2Wins >= totalFrames);
                 }).length}
               </p>
               <p className="text-sm text-muted-foreground">Befejezett</p>
@@ -340,10 +351,14 @@ export default function BiroMatchesPage() {
 
           const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
           const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
+          const totalFrames = match.frames_to_win;
+          const framesNeededToWin = Math.ceil(totalFrames / 2);
           
-          const isFinished = player1Wins >= match.frames_to_win || player2Wins >= match.frames_to_win;
-          const winner = player1Wins >= match.frames_to_win ? match.player1 : 
-                        player2Wins >= match.frames_to_win ? match.player2 : null;
+          const isFinished = player1Wins >= framesNeededToWin || 
+                            player2Wins >= framesNeededToWin ||
+                            (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
+          const winner = player1Wins >= framesNeededToWin ? match.player1 : 
+                        player2Wins >= framesNeededToWin ? match.player2 : null;
 
           return (
             <Card key={match.id} className="hover:bg-secondary/50 transition-colors">
@@ -376,7 +391,7 @@ export default function BiroMatchesPage() {
                       {player1Wins} - {player2Wins}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      First to {match.frames_to_win}
+                      Best of {match.frames_to_win}
                     </div>
                   </div>
                   <div className="flex-1 text-right">

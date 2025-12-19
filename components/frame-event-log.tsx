@@ -38,7 +38,7 @@ export function FrameEventLog({ frame, match, compact = false, onRemoveEvent }: 
             compact ? "max-h-64" : "max-h-96"
           )}
         >
-          {frame.events.slice().reverse().map((event, idx) => {
+          {frame.events.slice().reverse().map((event) => {
             const playerName = event.player?.user
               ? `${event.player.user.last_name} ${event.player.user.first_name}`
               : event.player

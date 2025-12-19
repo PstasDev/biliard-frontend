@@ -4,15 +4,13 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import { publicApi, getWebSocketUrl } from '@/lib/api';
-import { Match, Frame, MatchEvent } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Match, Frame } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { BallComponent } from '@/components/ui/ball';
 import { balls } from '@/lib/types';
 import Link from 'next/link';
-import { Timeline, TimelineItem, TimelineDot, TimelineConnector, TimelineContent } from '@/components/ui/timeline';
 import { cn } from '@/lib/utils';
-import { Play, Flag, RefreshCw, Star, Circle, AlertTriangle, TrendingUp, Target, ChevronUp } from 'lucide-react';
+import { Play, Flag, RefreshCw, Star, Circle, AlertTriangle, Target, ChevronUp } from 'lucide-react';
 
 export default function MatchDetailPage() {
   const params = useParams();
@@ -21,6 +19,8 @@ export default function MatchDetailPage() {
   const [loading, setLoading] = useState(true);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [showPreviousFrames, setShowPreviousFrames] = useState(false);
+  const [matchEnded, setMatchEnded] = useState(false);
+  const [finalTime, setFinalTime] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -69,11 +69,70 @@ export default function MatchDetailPage() {
     };
   }, [matchId]);
 
-  // Timer effect
+  // Timer effect - starts from first frame's first event
   useEffect(() => {
-    if (!match?.match_date) return;
+    if (!match) return;
     
-    const startTime = new Date(match.match_date).getTime();
+    // Get first frame's first event timestamp, fallback to match_date
+    const firstFrame = match.match_frames?.find(f => f.frame_number === 1);
+    const startTimeStr = firstFrame?.events?.[0]?.timestamp || match.match_date;
+    
+    if (!startTimeStr) return;
+    
+    // Check if match is over
+    const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
+    const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
+    const totalFrames = match.frames_to_win;
+    const framesNeededToWin = Math.ceil(totalFrames / 2);
+    const isMatchOver = player1Wins >= framesNeededToWin || 
+                       player2Wins >= framesNeededToWin ||
+                       (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
+    
+    const startTime = new Date(startTimeStr).getTime();
+    
+    // If match is over, calculate the final time based on the last frame's last event
+    if (isMatchOver) {
+      // Find the last frame with a winner
+      const lastFinishedFrame = match.match_frames
+        ?.filter(f => f.winner)
+        .sort((a, b) => b.frame_number - a.frame_number)[0];
+      
+      if (lastFinishedFrame && lastFinishedFrame.events && lastFinishedFrame.events.length > 0) {
+        // Get the last event's timestamp from the last finished frame
+        const lastEvent = lastFinishedFrame.events[lastFinishedFrame.events.length - 1];
+        const endTime = new Date(lastEvent.timestamp).getTime();
+        const finalElapsed = Math.floor((endTime - startTime) / 1000);
+        const timeToShow = finalElapsed > 0 ? finalElapsed : 0;
+        
+        console.log('Match ended - Timer calculation:', {
+          startTimeStr,
+          startTime,
+          lastEventTimestamp: lastEvent.timestamp,
+          endTime,
+          finalElapsed,
+          timeToShow,
+          matchEnded,
+          finalTime
+        });
+        
+        if (!matchEnded) {
+          setMatchEnded(true);
+          setFinalTime(timeToShow);
+          setElapsedTime(timeToShow);
+        } else if (finalTime !== null) {
+          setElapsedTime(finalTime);
+        } else {
+          setElapsedTime(timeToShow);
+        }
+      }
+      return;
+    }
+    
+    if (matchEnded && finalTime !== null) {
+      // Keep showing frozen time
+      setElapsedTime(finalTime);
+      return;
+    }
     
     const updateTimer = () => {
       const now = Date.now();
@@ -85,7 +144,7 @@ export default function MatchDetailPage() {
     const interval = setInterval(updateTimer, 1000);
     
     return () => clearInterval(interval);
-  }, [match?.match_date]);
+  }, [match, matchEnded, finalTime]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -123,6 +182,14 @@ export default function MatchDetailPage() {
 
   const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
   const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
+
+  const totalFrames = match.frames_to_win;
+  const framesNeededToWin = Math.ceil(totalFrames / 2);
+  const isMatchOver = player1Wins >= framesNeededToWin || 
+                     player2Wins >= framesNeededToWin ||
+                     (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
+  const isDraw = totalFrames % 2 === 0 && player1Wins === player2Wins && isMatchOver;
+  const winner = isDraw ? null : (player1Wins >= framesNeededToWin ? match.player1 : match.player2);
 
   const currentFrame = match.match_frames?.find(f => !f.winner);
 
@@ -193,11 +260,24 @@ export default function MatchDetailPage() {
               {/* Center Info */}
               <div className="flex flex-col items-center gap-1.5 sm:gap-2 animate-fade-in">
                 <div className="text-xs sm:text-sm text-white/90 font-semibold bg-green-900/80 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full backdrop-blur-sm whitespace-nowrap">
-                  First to {match.frames_to_win}
+                  Best of {match.frames_to_win}
                 </div>
                 <div className="text-sm sm:text-base font-mono text-white/90 bg-green-900/60 px-3 sm:px-4 py-1 sm:py-1.5 rounded backdrop-blur-sm tabular-nums">
                   {formatTime(elapsedTime)}
                 </div>
+                {isMatchOver && (
+                  <div className="text-center mt-2">
+                    {isDraw ? (
+                      <div className="text-lg sm:text-xl font-bold text-yellow-400 bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm animate-pulse">
+                        🤝 Döntetlen!
+                      </div>
+                    ) : winner && (
+                      <div className="text-lg sm:text-xl font-bold text-amber-400 bg-slate-900/80 px-4 py-2 rounded-lg backdrop-blur-sm animate-pulse">
+                        🏆 Győztes: {winner.user ? `${winner.user.last_name} ${winner.user.first_name}` : `${winner.last_name} ${winner.first_name}`}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Player 2 - Bottom */}
@@ -271,11 +351,24 @@ export default function MatchDetailPage() {
             {/* Center Score Info - Truly centered on table */}
             <div className="absolute top-[12%] left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-fade-in">
               <div className="text-sm text-white/90 font-semibold bg-green-900/80 px-4 py-2 rounded-full backdrop-blur-sm whitespace-nowrap">
-                First to {match.frames_to_win}
+                Best of {match.frames_to_win}
               </div>
               <div className="text-lg font-mono text-white/90 bg-green-900/60 px-4 py-1.5 rounded backdrop-blur-sm tabular-nums">
                 {formatTime(elapsedTime)}
               </div>
+              {isMatchOver && (
+                <div className="text-center mt-2">
+                  {isDraw ? (
+                    <div className="text-xl font-bold text-yellow-400 bg-slate-900/80 px-5 py-2.5 rounded-lg backdrop-blur-sm animate-pulse shadow-lg">
+                      🤝 Döntetlen!
+                    </div>
+                  ) : winner && (
+                    <div className="text-xl font-bold text-amber-400 bg-slate-900/80 px-5 py-2.5 rounded-lg backdrop-blur-sm animate-pulse shadow-lg">
+                      🏆 Győztes: {winner.user ? `${winner.user.last_name} ${winner.user.first_name}` : `${winner.last_name} ${winner.first_name}`}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Player 2 - Right - Absolute positioned */}
@@ -354,7 +447,7 @@ export default function MatchDetailPage() {
 
             <div className="space-y-8">
               {/* Process frames in reverse (newest first for bottom-to-top) */}
-              {[...match.match_frames].reverse().map((frame, frameIdx) => {
+              {[...match.match_frames].reverse().map((frame) => {
                 const isCurrentFrame = !frame.winner;
                 const shouldShow = isCurrentFrame || showPreviousFrames;
                 

@@ -6,7 +6,6 @@ import { useAuth } from '@/lib/hooks/useAuth';
 import { biroApi, getWebSocketUrl, getAccessToken } from '@/lib/api';
 import { Match, Frame, balls } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { BallComponent } from '@/components/ui/ball';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +16,6 @@ import {
 } from '@/components/ui/dialog';
 import { Timer } from '@/components/live-match/timer';
 import { BallsTracker } from '@/components/live-match/balls-tracker';
-import { ScoreControls } from '@/components/live-match/score-controls';
 import { ActionLog } from '@/components/live-match/action-log';
 import { ClearEventsDialog } from '@/components/live-match/clear-events-dialog';
 import { cn } from '@/lib/utils';
@@ -42,6 +40,9 @@ export default function BiroLiveMatchPage() {
   const [foulMenuOpen, setFoulMenuOpen] = useState(false);
   const [isStartingFrame, setIsStartingFrame] = useState(false);
   const [endFrameConfirm, setEndFrameConfirm] = useState<{ open: boolean; winnerId: number | null }>({ open: false, winnerId: null });
+  const [ballGroupDialogOpen, setBallGroupDialogOpen] = useState(false);
+  const [matchEnded, setMatchEnded] = useState(false);
+  const [matchWinner, setMatchWinner] = useState<{ id: number; name: string; wins: number } | null>(null);
 
   const fetchMatchData = async () => {
     try {
@@ -50,6 +51,53 @@ export default function BiroLiveMatchPage() {
       console.log('Match data received:', data);
       setMatch(data);
       setError(null);
+      
+      // Calculate wins
+      const player1Wins = data.match_frames?.filter((f: Frame) => f.winner?.id === data.player1.id).length || 0;
+      const player2Wins = data.match_frames?.filter((f: Frame) => f.winner?.id === data.player2.id).length || 0;
+      const totalFrames = data.frames_to_win;
+      const framesNeededToWin = Math.ceil(totalFrames / 2);
+      
+      // Check if match is over (Best of N logic)
+      // If odd frames: someone needs (N+1)/2 to win
+      // If even frames: can end in draw if both reach N/2
+      const isMatchOver = player1Wins >= framesNeededToWin || 
+                         player2Wins >= framesNeededToWin ||
+                         (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
+      
+      if (isMatchOver) {
+        const isDraw = totalFrames % 2 === 0 && player1Wins === player2Wins;
+        
+        if (isDraw) {
+          // Match ended in draw
+          if (!matchEnded) {
+            setMatchWinner(null);
+            setMatchEnded(true);
+          }
+        } else {
+          // Someone won
+          const winner = player1Wins >= framesNeededToWin
+            ? {
+                id: data.player1.id,
+                name: data.player1.user
+                  ? `${data.player1.user.last_name} ${data.player1.user.first_name}`
+                  : `${data.player1.last_name} ${data.player1.first_name}`,
+                wins: player1Wins
+              }
+            : {
+                id: data.player2.id,
+                name: data.player2.user
+                  ? `${data.player2.user.last_name} ${data.player2.user.first_name}`
+                  : `${data.player2.last_name} ${data.player2.first_name}`,
+                wins: player2Wins
+              };
+          
+          if (!matchEnded) {
+            setMatchWinner(winner);
+            setMatchEnded(true);
+          }
+        }
+      }
       
       // Find current frame
       const ongoing = data.match_frames?.find((f: Frame) => !f.winner);
@@ -197,9 +245,15 @@ export default function BiroLiveMatchPage() {
         frame_number: nextFrameNumber,
       });
       
-      // Optimistically update UI
+      // Optimistically update UI with new frame
       setCurrentFrame(newFrame);
       setCurrentPlayer(match.player1.id);
+      
+      // Update match state to include the new frame
+      setMatch(prev => prev ? {
+        ...prev,
+        match_frames: [...(prev.match_frames || []), newFrame]
+      } : null);
       
       // Notify via WebSocket
       wsRef.current?.send(JSON.stringify({
@@ -215,13 +269,69 @@ export default function BiroLiveMatchPage() {
   };
 
   const handleEndFrame = async (winnerId: number) => {
-    if (!currentFrame) return;
+    if (!currentFrame || !match) return;
     
     try {
       await biroApi.updateFrame(currentFrame.id, {
         frame_number: currentFrame.frame_number,
         winner_id: winnerId,
       });
+      
+      // Calculate wins after this frame
+      const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
+      const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
+      
+      // Add 1 to the winner's score
+      const newPlayer1Wins = winnerId === match.player1.id ? player1Wins + 1 : player1Wins;
+      const newPlayer2Wins = winnerId === match.player2.id ? player2Wins + 1 : player2Wins;
+      
+      const totalFrames = match.frames_to_win;
+      const framesNeededToWin = Math.ceil(totalFrames / 2);
+      
+      // Check if match is over (Best of N logic)
+      const isDraw = totalFrames % 2 === 0 && newPlayer1Wins === newPlayer2Wins && newPlayer1Wins + newPlayer2Wins >= totalFrames;
+      const isMatchOver = newPlayer1Wins >= framesNeededToWin || newPlayer2Wins >= framesNeededToWin || isDraw;
+      
+      if (isMatchOver) {
+        if (isDraw) {
+          // Match ended in draw
+          setMatchWinner(null);
+          setMatchEnded(true);
+        } else {
+          // Match is over - determine winner
+          const winner = newPlayer1Wins >= framesNeededToWin 
+            ? { 
+                id: match.player1.id, 
+                name: match.player1.user 
+                  ? `${match.player1.user.last_name} ${match.player1.user.first_name}` 
+                  : `${match.player1.last_name} ${match.player1.first_name}`,
+                wins: newPlayer1Wins
+              }
+            : { 
+                id: match.player2.id, 
+                name: match.player2.user 
+                  ? `${match.player2.user.last_name} ${match.player2.user.first_name}` 
+                  : `${match.player2.last_name} ${match.player2.first_name}`,
+                wins: newPlayer2Wins
+              };
+          
+          setMatchWinner(winner);
+          setMatchEnded(true);
+        }
+      }
+      
+      // Update match state to mark current frame as ended
+      if (match.match_frames) {
+        const updatedFrames = match.match_frames.map(f => 
+          f.id === currentFrame.id 
+            ? { ...f, winner: winnerId === match.player1.id ? match.player1 : match.player2 }
+            : f
+        );
+        setMatch({
+          ...match,
+          match_frames: updatedFrames
+        });
+      }
       
       // Optimistically update UI
       setCurrentFrame(null);
@@ -234,6 +344,9 @@ export default function BiroLiveMatchPage() {
         frame_id: currentFrame.id,
         winner_id: winnerId,
       }));
+      
+      // Refresh match data to ensure consistency
+      await fetchMatchData();
     } catch (error) {
       console.error('Error ending frame:', error);
       setError('Hiba a frame lezáráskor');
@@ -394,6 +507,7 @@ export default function BiroLiveMatchPage() {
       }));
       setSuccessMessage('Golyó csoportok beállítva!');
       setTimeout(() => setSuccessMessage(null), 2000);
+      setBallGroupDialogOpen(false);
     } catch (error) {
       console.error('Error setting ball groups:', error);
     }
@@ -424,44 +538,9 @@ export default function BiroLiveMatchPage() {
     }
   };
 
-  const handleNextPlayer = async () => {
-    if (!currentFrame || !match) return;
-    
-    const nextPlayerId = currentPlayer === match.player1.id 
-      ? match.player2.id 
-      : match.player1.id;
-    
-    try {
-      await biroApi.createEvent(currentFrame.id, {
-        eventType: 'next_player',
-        player_id: nextPlayerId,
-      });
-      
-      setCurrentPlayer(nextPlayerId);
-      setSelectedBalls([]);
-    } catch (error) {
-      console.error('Error switching player:', error);
-    }
-  };
 
-  const handlePlayerAction = async (playerId: number, action: 'goal' | 'yellow' | 'red') => {
-    if (!currentFrame) return;
-    
-    try {
-      if (action === 'goal') {
-        // This means the player won this frame
-        await handleEndFrame(playerId);
-      } else if (action === 'yellow' || action === 'red') {
-        // Record foul
-        await biroApi.createEvent(currentFrame.id, {
-          eventType: 'faul',
-          player_id: playerId,
-        });
-      }
-    } catch (error) {
-      console.error('Error recording player action:', error);
-    }
-  };
+
+
 
   const handleSwitchPlayer = () => {
     if (!match) return;
@@ -487,11 +566,13 @@ export default function BiroLiveMatchPage() {
   const player1Wins = match?.match_frames?.filter(f => f.winner?.id === match?.player1.id).length || 0;
   const player2Wins = match?.match_frames?.filter(f => f.winner?.id === match?.player2.id).length || 0;
 
+  // Get the first frame's first event timestamp for timer start
+  const firstFrame = match?.match_frames?.find(f => f.frame_number === 1);
+  const firstEventTimestamp = firstFrame?.events?.[0]?.timestamp || match?.match_date;
+
   const pottedBalls = currentFrame?.events
     ?.filter(e => e.eventType === 'balls_potted' && e.ball_ids)
     .flatMap(e => e.ball_ids || []) || [];
-
-  const cueBall = balls.find(b => b.id === 'cue');
 
   if (authLoading || loading) {
     return (
@@ -530,7 +611,12 @@ export default function BiroLiveMatchPage() {
           <div className="flex items-center justify-between mb-3">
             <Link href="/biro/live" className="text-3xl text-slate-200 hover:text-white transition-colors">←</Link>
             <div className="flex items-center gap-3">
-              <Timer matchStartTime={match.match_date} showControls={false} className="flex-1 flex justify-center" />
+              <Timer 
+                matchStartTime={firstEventTimestamp} 
+                isStopped={matchEnded}
+                showControls={false} 
+                className="flex-1 flex justify-center" 
+              />
               {/* WebSocket Status Indicator */}
               <div className={cn(
                 "w-3 h-3 rounded-full transition-colors shadow-lg",
@@ -566,7 +652,7 @@ export default function BiroLiveMatchPage() {
             <div className="text-center px-3">
               <div className="text-2xl font-bold text-slate-400">-</div>
               <div className="text-xs text-slate-500 whitespace-nowrap font-medium">
-                to {match.frames_to_win}
+                of {match.frames_to_win}
               </div>
               <div className="text-xs text-slate-200 font-bold mt-1">
                 #{currentFrame?.frame_number || (match.match_frames?.length || 0) + 1}
@@ -609,25 +695,67 @@ export default function BiroLiveMatchPage() {
       {/* MAIN CONTENT AREA - Mobile optimized with scrolling allowed */}
       <div className="flex-1 overflow-y-auto bg-slate-950">
         {!currentFrame ? (
-          /* No Frame Active - Start Button */
+          /* No Frame Active - Start Button or Match Ended */
           <div className="flex items-center justify-center min-h-full px-4 py-8">
             <div className="text-center space-y-6 w-full max-w-md">
-              <h2 className="text-3xl font-bold text-slate-100">Új Frame indítása</h2>
-              <Button 
-                onClick={handleStartFrame}
-                disabled={isStartingFrame}
-                size="lg" 
-                className="w-full h-20 text-xl font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 disabled:opacity-50"
-              >
-                {isStartingFrame ? 'Indítás...' : `▶ Frame #${(match?.match_frames?.length || 0) + 1} indítása`}
-              </Button>
+              {matchEnded ? (
+                <>
+                  <div className="text-6xl mb-4">{matchWinner ? '🏆' : '🤝'}</div>
+                  <h2 className="text-3xl font-bold text-amber-400">
+                    {matchWinner ? 'Játék vége!' : 'Döntetlen!'}
+                  </h2>
+                  {matchWinner ? (
+                    <>
+                      <p className="text-xl text-slate-300">
+                        Győztes: <span className="font-bold text-emerald-400">{matchWinner.name}</span>
+                      </p>
+                      <p className="text-lg text-slate-400">
+                        {matchWinner.wins} frame-mel nyert!
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-xl text-slate-300">
+                      A mérkőzés döntetlennel végződött!
+                    </p>
+                  )}
+                  <div className="flex gap-3 w-full">
+                    <Button 
+                      onClick={() => router.push('/biro/live')}
+                      size="lg" 
+                      variant="outline"
+                      className="flex-1 h-16 text-lg font-bold"
+                    >
+                      ← Vissza a listához
+                    </Button>
+                    <Button 
+                      onClick={() => router.push(`/matches/${matchId}`)}
+                      size="lg" 
+                      className="flex-1 h-16 text-lg font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg"
+                    >
+                      Eredémények megtekintése
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-3xl font-bold text-slate-100">Új Frame indítása</h2>
+                  <Button 
+                    onClick={handleStartFrame}
+                    disabled={isStartingFrame}
+                    size="lg" 
+                    className="w-full h-20 text-xl font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 disabled:opacity-50"
+                  >
+                    {isStartingFrame ? 'Indítás...' : `▶ Frame #${(match?.match_frames?.length || 0) + 1} indítása`}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         ) : (
           /* Frame Active - Optimized Layout */
           <div className="min-h-full flex flex-col p-3 gap-3">
-            {/* Ball Group Assignment - Only show if not set */}
-            {(!currentFrame.player1_ball_group || !currentFrame.player2_ball_group) && (
+            {/* Ball Group Assignment - Show warning if not set, or button to change if set */}
+            {(!currentFrame.player1_ball_group || !currentFrame.player2_ball_group) ? (
               <div className="bg-amber-600/20 border-2 border-amber-400 rounded-xl p-3 shadow-lg backdrop-blur-sm">
                 <div className="text-sm font-bold text-amber-300 mb-2 flex items-center gap-2">
                   <span>⚠</span>
@@ -649,6 +777,24 @@ export default function BiroLiveMatchPage() {
                     size="sm"
                   >
                     {player1Name.split(' ')[0]}<br/>Csíkos (9-15)
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-800/40 border-2 border-slate-600 rounded-xl p-3 shadow-lg backdrop-blur-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm text-slate-300">
+                    <span className="font-semibold text-blue-300">{player1Name.split(' ')[0]}</span>: {currentFrame.player1_ball_group === 'full' ? 'TELI (1-7)' : 'CSÍKOS (9-15)'}
+                    {' | '}
+                    <span className="font-semibold text-red-300">{player2Name.split(' ')[0]}</span>: {currentFrame.player2_ball_group === 'full' ? 'TELI (1-7)' : 'CSÍKOS (9-15)'}
+                  </div>
+                  <Button
+                    onClick={() => setBallGroupDialogOpen(true)}
+                    variant="outline"
+                    className="h-8 text-xs font-semibold hover:bg-purple-600 hover:text-white border-2 border-purple-400 text-slate-200 bg-purple-600/20 px-3"
+                    size="sm"
+                  >
+                    🔄 Csere
                   </Button>
                 </div>
               </div>
@@ -784,6 +930,127 @@ export default function BiroLiveMatchPage() {
           </div>
         )}
       </div>
+
+      {/* Match Victory Dialog */}
+      <Dialog open={matchEnded} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-lg" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-amber-400 text-3xl justify-center">
+              {matchWinner ? (
+                <>
+                  <span className="text-5xl">🏆</span>
+                  <span>Játék vége!</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-5xl">🤝</span>
+                  <span>Döntetlen!</span>
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription className="pt-6 text-center space-y-4">
+              {matchWinner ? (
+                <>
+                  <div className="text-2xl font-bold text-foreground">
+                    Gratulálunk!
+                  </div>
+                  <div className="text-3xl font-extrabold bg-gradient-to-r from-amber-400 to-yellow-300 bg-clip-text text-transparent">
+                    {matchWinner.name}
+                  </div>
+                  <div className="text-lg text-muted-foreground">
+                    Győztes <span className="font-bold text-emerald-400">{matchWinner.wins}</span> frame-mel!
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl font-bold text-foreground">
+                    A mérkőzés döntetlennel végződött!
+                  </div>
+                  <div className="text-lg text-muted-foreground">
+                    Mindkét játékos azonos számú frame-t nyert.
+                  </div>
+                </>
+              )}
+              <div className="pt-4 text-sm text-slate-400">
+                A stopper leállt. A mérkőzés véget ért.
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:gap-2 pt-4">
+            <Button
+              onClick={() => router.push('/biro/live')}
+              variant="outline"
+              className="flex-1"
+            >
+              Vissza a listához
+            </Button>
+            <Button
+              onClick={() => router.push(`/matches/${matchId}`)}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500"
+            >
+              Eredmények megtekintése
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ball Group Change Dialog */}
+      <Dialog open={ballGroupDialogOpen} onOpenChange={setBallGroupDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-500">
+              <span className="text-2xl">🔄</span>
+              Golyó csoportok cseréje
+            </DialogTitle>
+            <DialogDescription className="pt-4">
+              Válaszd ki az új leosztást a játékosoknak:
+              <br /><br />
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="font-semibold text-blue-400">{player1Name}</span>
+                  <div className="text-xs text-slate-400">
+                    Jelenleg: {currentFrame?.player1_ball_group === 'full' ? 'TELI (1-7)' : 'CSÍKOS (9-15)'}
+                  </div>
+                </div>
+                <div>
+                  <span className="font-semibold text-red-400">{player2Name}</span>
+                  <div className="text-xs text-slate-400">
+                    Jelenleg: {currentFrame?.player2_ball_group === 'full' ? 'TELI (1-7)' : 'CSÍKOS (9-15)'}
+                  </div>
+                </div>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-4">
+            <Button
+              onClick={() => handleSetBallGroups('full', 'striped')}
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 hover:bg-blue-600 hover:text-white border-2 border-blue-400 text-slate-200 bg-blue-600/20"
+            >
+              <div className="font-bold text-blue-300">{player1Name.split(' ')[0]}</div>
+              <div className="text-xs">TELI (1-7)</div>
+              <div className="text-2xl">⚫</div>
+            </Button>
+            <Button
+              onClick={() => handleSetBallGroups('striped', 'full')}
+              variant="outline"
+              className="h-auto py-4 flex flex-col items-center gap-2 hover:bg-blue-600 hover:text-white border-2 border-blue-400 text-slate-200 bg-blue-600/20"
+            >
+              <div className="font-bold text-blue-300">{player1Name.split(' ')[0]}</div>
+              <div className="text-xs">CSÍKOS (9-15)</div>
+              <div className="text-2xl">⚪</div>
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setBallGroupDialogOpen(false)}
+            >
+              Mégse
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* End Frame Confirmation Dialog */}
       <Dialog open={endFrameConfirm.open} onOpenChange={(open) => setEndFrameConfirm({ open, winnerId: null })}>

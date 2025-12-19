@@ -100,7 +100,7 @@ const TimelineDot = React.forwardRef<HTMLDivElement, TimelineDotProps>(
 TimelineDot.displayName = 'TimelineDot';
 
 const TimelineConnector = React.forwardRef<HTMLDivElement, TimelineConnectorProps>(
-  ({ className }, ref) => {
+  () => {
     return null; // Connector is now the central line in Timeline component
   }
 );

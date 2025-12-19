@@ -44,6 +44,7 @@ export default function BiroTournamentsPage() {
 
   useEffect(() => {
     filterTournaments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournaments, searchQuery, gameModeFilter]);
 
   async function fetchTournaments() {

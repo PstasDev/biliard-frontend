@@ -44,6 +44,7 @@ export default function BiroPlayersPage() {
 
   useEffect(() => {
     filterPlayers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [players, searchQuery, roleFilter]);
 
   async function fetchPlayers() {

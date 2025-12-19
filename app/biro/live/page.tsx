@@ -119,7 +119,7 @@ function MatchCard({ match }: { match: Match }) {
                 {player1Wins} - {player2Wins}
               </div>
               <div className="text-xs text-muted-foreground">
-                First to {match.frames_to_win}
+                Best of {match.frames_to_win}
               </div>
             </div>
             <div className="flex-1 text-right">

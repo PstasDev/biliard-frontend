@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 interface TimerProps {
   isRunning?: boolean;
   matchStartTime?: string | null;
+  isStopped?: boolean; // New prop to stop timer permanently (match ended)
   onPause?: () => void;
   onStart?: () => void;
   onReset?: () => void;
@@ -17,6 +18,7 @@ interface TimerProps {
 export function Timer({ 
   isRunning = false,
   matchStartTime = null,
+  isStopped = false,
   onPause, 
   onStart, 
   onReset,
@@ -25,6 +27,7 @@ export function Timer({
 }: TimerProps) {
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(isRunning);
+  const [frozenTime, setFrozenTime] = useState<number | null>(null);
 
   useEffect(() => {
     setRunning(isRunning);
@@ -33,6 +36,15 @@ export function Timer({
   // If matchStartTime is provided, calculate elapsed time from match start
   useEffect(() => {
     if (!matchStartTime) return;
+    if (isStopped && frozenTime === null) {
+      // Freeze the time when match stops
+      setFrozenTime(seconds);
+      return;
+    }
+    if (isStopped && frozenTime !== null) {
+      // Keep showing frozen time
+      return;
+    }
     
     const startTime = new Date(matchStartTime).getTime();
     
@@ -46,7 +58,7 @@ export function Timer({
     const interval = setInterval(updateTimer, 1000);
     
     return () => clearInterval(interval);
-  }, [matchStartTime]);
+  }, [matchStartTime, isStopped, frozenTime, seconds]);
 
   // Otherwise use internal timer with controls
   useEffect(() => {
