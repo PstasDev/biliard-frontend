@@ -83,7 +83,9 @@ export default function MatchDetailPage() {
     const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
     const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
     const totalFrames = match.frames_to_win;
-    const framesNeededToWin = Math.ceil(totalFrames / 2);
+    // For even N need (N/2)+1 to win, for odd N need ceil(N/2)
+    // Examples: best of 4 needs 3, best of 5 needs 3, best of 6 needs 4
+    const framesNeededToWin = totalFrames % 2 === 0 ? (totalFrames / 2) + 1 : Math.ceil(totalFrames / 2);
     const isMatchOver = player1Wins >= framesNeededToWin || 
                        player2Wins >= framesNeededToWin ||
                        (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
@@ -184,7 +186,9 @@ export default function MatchDetailPage() {
   const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
 
   const totalFrames = match.frames_to_win;
-  const framesNeededToWin = Math.ceil(totalFrames / 2);
+  // For even N need (N/2)+1 to win, for odd N need ceil(N/2)
+  // Examples: best of 4 needs 3, best of 5 needs 3, best of 6 needs 4
+  const framesNeededToWin = totalFrames % 2 === 0 ? (totalFrames / 2) + 1 : Math.ceil(totalFrames / 2);
   const isMatchOver = player1Wins >= framesNeededToWin || 
                      player2Wins >= framesNeededToWin ||
                      (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);

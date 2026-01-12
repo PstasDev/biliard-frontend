@@ -79,7 +79,8 @@ export default function BiroMatchesPage() {
         const player1Wins = match.match_frames?.filter(f => f.winner?.id === match.player1.id).length || 0;
         const player2Wins = match.match_frames?.filter(f => f.winner?.id === match.player2.id).length || 0;
         const totalFrames = match.frames_to_win;
-        const framesNeededToWin = Math.ceil(totalFrames / 2);
+        // For even N need (N/2)+1 to win, for odd N need ceil(N/2)
+        const framesNeededToWin = totalFrames % 2 === 0 ? (totalFrames / 2) + 1 : Math.ceil(totalFrames / 2);
         const isFinished = player1Wins >= framesNeededToWin || 
                           player2Wins >= framesNeededToWin ||
                           (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
