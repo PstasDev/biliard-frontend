@@ -266,9 +266,11 @@ export default function MatchDetailPage() {
                 <div className="text-xs sm:text-sm text-white/90 font-semibold bg-green-900/80 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full backdrop-blur-sm whitespace-nowrap">
                   Best of {match.frames_to_win}
                 </div>
-                <div className="text-sm sm:text-base font-mono text-white/90 bg-green-900/60 px-3 sm:px-4 py-1 sm:py-1.5 rounded backdrop-blur-sm tabular-nums">
-                  {formatTime(elapsedTime)}
-                </div>
+                {!isMatchOver && (
+                  <div className="text-sm sm:text-base font-mono text-white/90 bg-green-900/60 px-3 sm:px-4 py-1 sm:py-1.5 rounded backdrop-blur-sm tabular-nums">
+                    {formatTime(elapsedTime)}
+                  </div>
+                )}
                 {isMatchOver && (
                   <div className="text-center mt-2">
                     {isDraw ? (
@@ -357,9 +359,11 @@ export default function MatchDetailPage() {
               <div className="text-sm text-white/90 font-semibold bg-green-900/80 px-4 py-2 rounded-full backdrop-blur-sm whitespace-nowrap">
                 Best of {match.frames_to_win}
               </div>
-              <div className="text-lg font-mono text-white/90 bg-green-900/60 px-4 py-1.5 rounded backdrop-blur-sm tabular-nums">
-                {formatTime(elapsedTime)}
-              </div>
+              {!isMatchOver && (
+                <div className="text-lg font-mono text-white/90 bg-green-900/60 px-4 py-1.5 rounded backdrop-blur-sm tabular-nums">
+                  {formatTime(elapsedTime)}
+                </div>
+              )}
               {isMatchOver && (
                 <div className="text-center mt-2">
                   {isDraw ? (
