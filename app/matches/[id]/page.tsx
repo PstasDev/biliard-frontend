@@ -193,7 +193,7 @@ export default function MatchDetailPage() {
                      player2Wins >= framesNeededToWin ||
                      (totalFrames % 2 === 0 && player1Wins + player2Wins >= totalFrames);
   const isDraw = totalFrames % 2 === 0 && player1Wins === player2Wins && isMatchOver;
-  const winner = isDraw ? null : (player1Wins >= framesNeededToWin ? match.player1 : match.player2);
+  const winner = isDraw ? null : (player1Wins >= framesNeededToWin ? match.player1 : (player2Wins >= framesNeededToWin ? match.player2 : null));
 
   const currentFrame = match.match_frames?.find(f => !f.winner);
 
